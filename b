@@ -15,5 +15,5 @@ case $OS in
   ;;
 esac
 
-gcc -g -c memalloc.c
+gcc -g -O0 -c memalloc.c
 
