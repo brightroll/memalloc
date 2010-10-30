@@ -52,7 +52,7 @@ void memalloc_init(void)
 //static void link_real_funcs(void);
 static void do_init(void);
 
-/* memalloc_malloc
+/* memalloc_header
  *
  * Storage format
  * |  '|'   1   2   3   4   5   6   7   8 null A/F null 
@@ -76,11 +76,11 @@ struct memalloc_header
 
 
 
-/* memalloc_malloc
+/* memalloc_alloc
  *
  */
 void *
-memalloc_malloc(void * arena, char * type, char clear, size_t size)
+memalloc_alloc(void * arena, char * type, char clear, size_t size)
 {
 //  if (!real_malloc)
 //    link_real_funcs();
@@ -152,7 +152,7 @@ __wrap_malloc(size_t size, const void * caller)
     do_init();
   DBGLOG("> malloc %d", size);
   __malloc_hook = old_malloc_hook;
-  void * p = memalloc_malloc(NULL, memalloc_default_type, 0, size); 
+  void * p = memalloc_alloc(NULL, memalloc_default_type, 0, size); 
   old_malloc_hook = __malloc_hook;
   __malloc_hook = __wrap_malloc;
   DBGLOG("< malloc %08x", p);
@@ -174,7 +174,7 @@ void * __wrap_calloc(size_t nmemb, size_t size)
   if (memalloc_init_state == 0)
     do_init();
   DBGLOG("> calloc ", (nmemb * size));
-  void * p = memalloc_malloc(NULL, memalloc_default_type, 1, (nmemb * size)); 
+  void * p = memalloc_alloc(NULL, memalloc_default_type, 1, (nmemb * size)); 
   DBGLOG("< calloc %08x", p);
   return p;
 }
@@ -213,7 +213,7 @@ void * __wrap_realloc(void *ptr, size_t size, const void * caller )
   __realloc_hook = old_realloc_hook;
   __malloc_hook = old_malloc_hook;
   __free_hook = old_free_hook;
-  void * new = memalloc_malloc(NULL, memalloc_default_type, 0, size); 
+  void * new = memalloc_alloc(NULL, memalloc_default_type, 0, size); 
   memcpy(new, ptr, actual);
   memalloc_free(NULL, memalloc_default_type, ptr); 
   __realloc_hook = __wrap_realloc;
