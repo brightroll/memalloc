@@ -3,16 +3,24 @@
 #include <stdio.h>
 #include <stdint.h>
 #include <string.h>
-#include <dlfcn.h>
+#include <stdlib.h>
+//#include <dlfcn.h>
 
 void * memalloc_default_arena = NULL;
 char * memalloc_default_type = "INIT";
 unsigned char memalloc_debug_mode = 0;
 
-static void* (*real_malloc)(size_t) = NULL;
-static void* (*real_free)(void *) = NULL;
+static unsigned char memalloc_init_state = 0; // 0 = uninit, 1 = init
+static char memalloc_output_buff[1024];
 
-static void link_real_funcs(void);
+//static void* (*real_malloc)(size_t) = NULL;
+//static void* (*real_free)(void *) = NULL;
+
+void * __real_malloc(size_t);
+void   __real_free(void *);
+
+//static void link_real_funcs(void);
+static void do_init(void);
 
 /* memalloc_malloc
  *
@@ -34,6 +42,8 @@ struct memalloc_header
 };
 #pragma pack(pop)
 
+#define LOG(format, ...) do { snprintf(memalloc_output_buff, 1024, format "\n", __VA_ARGS__); write(2, memalloc_output_buff, strlen(memalloc_output_buff)); } while (0)
+
 
 
 /* memalloc_malloc
@@ -42,10 +52,12 @@ struct memalloc_header
 void *
 memalloc_malloc(void * arena, char * type, char clear, size_t size)
 {
-  if (!real_malloc)
-    link_real_funcs();
+//  if (!real_malloc)
+//    link_real_funcs();
+  if (memalloc_init_state == 0)
+    do_init();
 
-  void * result = real_malloc(size + sizeof(struct memalloc_header));
+  void * result = __real_malloc(size + sizeof(struct memalloc_header));
 
   if (result == NULL)
     return result;
@@ -79,8 +91,17 @@ memalloc_free(void * arena, char * type, void * ptr)
   //TODO: Verify that we weren't already freed
   void * p = ptr - sizeof(struct memalloc_header);
   struct memalloc_header * hdr = (struct memalloc_header *) p; 
-  hdr->flags = 'F';
-  real_free(p);
+  if (hdr->border != '|')
+  {
+    LOG("> memalloc_free %08x - bad/legacy free", ptr);
+    __real_free(ptr);
+  }
+  else
+  {
+    LOG("> memalloc_free %08x - %s - %d", ptr, hdr->type, hdr->size);
+    hdr->flags = 'F';
+    __real_free(p);
+  }
 }
 
 /* memalloc_size
@@ -94,23 +115,41 @@ memalloc_size(void * arena, char * type, void * ptr)
   return hdr->size;
 }
 
-void *malloc(size_t size)
+void * __wrap_malloc(size_t size)
 {
-  return memalloc_malloc(NULL, memalloc_default_type, 0, size); 
+  if (memalloc_init_state == 0)
+    do_init();
+  if (memalloc_debug_mode)
+    LOG("> malloc %d", size);
+  void * p = memalloc_malloc(NULL, memalloc_default_type, 0, size); 
+  if (memalloc_debug_mode)
+    LOG("< malloc %08x", p);
+  return p;
 }
 
-void free(void *ptr)
+void __wrap_free(void *ptr)
 {
+  if (memalloc_debug_mode)
+    LOG("> free %08x", ptr);
   memalloc_free(NULL, memalloc_default_type, ptr); 
 }
 
-void *calloc(size_t nmemb, size_t size)
+void * __wrap_calloc(size_t nmemb, size_t size)
 {
-  return memalloc_malloc(NULL, memalloc_default_type, 1, (nmemb * size)); 
+  if (memalloc_init_state == 0)
+    do_init();
+  if (memalloc_debug_mode)
+    LOG("> calloc ", (nmemb * size));
+  void * p = memalloc_malloc(NULL, memalloc_default_type, 1, (nmemb * size)); 
+  if (memalloc_debug_mode)
+    LOG("< calloc %08x", p);
+  return p;
 }
 
-void *realloc(void *ptr, size_t size)
+void * __wrap_realloc(void *ptr, size_t size)
 {
+  if (memalloc_debug_mode)
+    LOG("> realloc %08x %d", ptr, size);
   // Error case
   if ((ptr == NULL) && (size == 0))
     return NULL;
@@ -128,6 +167,8 @@ void *realloc(void *ptr, size_t size)
 
   // The typical case (ptr && size)
   int actual = memalloc_size(NULL, memalloc_default_type, ptr);
+  if (memalloc_debug_mode)
+    LOG("| realloc %d", actual);
   if (size <= actual)
     return ptr;
 
@@ -138,10 +179,19 @@ void *realloc(void *ptr, size_t size)
   return new;
 }
 
+/*
 static void link_real_funcs(void)
 {
   real_malloc = dlsym(RTLD_NEXT, "malloc");
   real_free = dlsym(RTLD_NEXT, "free");
 }
+*/
 
 
+static void do_init(void)
+{
+  char * p = getenv("MEMALLOC_DEBUG_STDERR");
+  if (p)
+    memalloc_debug_mode = 1;
+  memalloc_init_state = 1;
+}
