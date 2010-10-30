@@ -55,16 +55,16 @@ static void do_init(void);
 /* memalloc_malloc
  *
  * Storage format
- * |  '|'   1   2   3   4 null A/F null 
+ * |  '|'   1   2   3   4   5   6   7   8 null A/F null 
  * |  size (little endian unsigned int)
  *
- * size + 12
+ * size + 16
  */
 #pragma pack(push, 1)
 struct memalloc_header
 {
   char border;
-  char type[4];
+  char type[8];
   char null1;
   char flags;
   char null2;
@@ -72,7 +72,7 @@ struct memalloc_header
 };
 #pragma pack(pop)
 
-#define LOG(format, ...) do { snprintf(memalloc_output_buff, 1024, format "\n", __VA_ARGS__); write(2, memalloc_output_buff, strlen(memalloc_output_buff)); } while (0)
+#define DBGLOG(format, ...) if (memalloc_debug_mode) do { snprintf(memalloc_output_buff, 1024, format "\n", __VA_ARGS__); write(2, memalloc_output_buff, strlen(memalloc_output_buff)); } while (0)
 
 
 
@@ -123,12 +123,12 @@ memalloc_free(void * arena, char * type, void * ptr)
   struct memalloc_header * hdr = (struct memalloc_header *) p; 
   if (hdr->border != '|')
   {
-    LOG("> memalloc_free %08x - bad/legacy free", ptr);
+    DBGLOG("> memalloc_free %08x - bad/legacy free", ptr);
     free(ptr);
   }
   else
   {
-    LOG("> memalloc_free %08x - %s - %d", ptr, hdr->type, hdr->size);
+    DBGLOG("> memalloc_free %08x - %s - %d", ptr, hdr->type, hdr->size);
     hdr->flags = 'F';
     free(p);
   }
@@ -150,22 +150,19 @@ __wrap_malloc(size_t size, const void * caller)
 {
   if (memalloc_init_state == 0)
     do_init();
-  if (memalloc_debug_mode)
-    LOG("> malloc %d", size);
+  DBGLOG("> malloc %d", size);
   __malloc_hook = old_malloc_hook;
   void * p = memalloc_malloc(NULL, memalloc_default_type, 0, size); 
   old_malloc_hook = __malloc_hook;
   __malloc_hook = __wrap_malloc;
-  if (memalloc_debug_mode)
-    LOG("< malloc %08x", p);
+  DBGLOG("< malloc %08x", p);
   return p;
 }
 
 void
 __wrap_free(void *ptr, const void * caller)
 {
-  if (memalloc_debug_mode)
-    LOG("> free %08x", ptr);
+  DBGLOG("> free %08x", ptr);
   __free_hook = old_free_hook;
   memalloc_free(NULL, memalloc_default_type, ptr); 
   old_free_hook = __free_hook;
@@ -176,18 +173,15 @@ void * __wrap_calloc(size_t nmemb, size_t size)
 {
   if (memalloc_init_state == 0)
     do_init();
-  if (memalloc_debug_mode)
-    LOG("> calloc ", (nmemb * size));
+  DBGLOG("> calloc ", (nmemb * size));
   void * p = memalloc_malloc(NULL, memalloc_default_type, 1, (nmemb * size)); 
-  if (memalloc_debug_mode)
-    LOG("< calloc %08x", p);
+  DBGLOG("< calloc %08x", p);
   return p;
 }
 
 void * __wrap_realloc(void *ptr, size_t size, const void * caller )
 {
-  if (memalloc_debug_mode)
-    LOG("> realloc %08x %d", ptr, size);
+  DBGLOG("> realloc %08x %d", ptr, size);
   // Error case
   if ((ptr == NULL) && (size == 0))
     return NULL;
@@ -210,8 +204,7 @@ void * __wrap_realloc(void *ptr, size_t size, const void * caller )
   __realloc_hook = old_realloc_hook;
   __malloc_hook = old_malloc_hook;
   int actual = memalloc_size(NULL, memalloc_default_type, ptr);
-  if (memalloc_debug_mode)
-    LOG("| realloc %d", actual);
+  DBGLOG("| realloc %d", actual);
   __realloc_hook = __wrap_realloc;
   __malloc_hook = __wrap_malloc;
   if (size <= actual)
@@ -227,6 +220,7 @@ void * __wrap_realloc(void *ptr, size_t size, const void * caller )
   __malloc_hook = __wrap_malloc;
   __free_hook = __wrap_free;
 
+  DBGLOG("< realloc %08x", new);
   return new;
 }
 
