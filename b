@@ -17,3 +17,6 @@ esac
 
 gcc -g -O0 -c memalloc.c
 
+# For building a LD_PRELOAD version
+# gcc -g -O0 -shared -o libmemalloc.so memalloc.c
+

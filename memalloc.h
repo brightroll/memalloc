@@ -1,4 +1,6 @@
 
+void memalloc_init(void);
+
 /* memalloc_malloc
  *
  */
