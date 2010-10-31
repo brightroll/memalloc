@@ -27,4 +27,12 @@ extern void * memalloc_default_arena;
 extern char * memalloc_default_type;
 extern unsigned char memalloc_debug_mode;
 
+/* stats
+ *
+ */
+extern void * memalloc_lo_mem;
+extern void * memalloc_hi_mem;
+extern unsigned long long * memalloc_stats_alloc;
+extern unsigned long long * memalloc_stats_free;
+
 

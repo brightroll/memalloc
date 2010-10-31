@@ -13,6 +13,8 @@ unsigned char memalloc_debug_mode = 0;
 
 void * memalloc_lo_mem;
 void * memalloc_hi_mem;
+unsigned long long memalloc_stats_alloc = 0;
+unsigned long long memalloc_stats_free = 0;
 
 static unsigned char memalloc_init_state = 0; // 0 = uninit, 1 = init
 static char memalloc_output_buff[1024];
@@ -92,6 +94,8 @@ memalloc_alloc(void * arena, char * type, char clear, size_t size)
   if (memalloc_init_state == 0)
     do_init();
 
+  memalloc_stats_alloc++;
+
   DBGLOG("> memalloc_alloc %s %d %d", type, clear, size);
 
   if (size == 0)
@@ -141,6 +145,8 @@ memalloc_alloc(void * arena, char * type, char clear, size_t size)
 void
 memalloc_free(void * arena, char * type, void * ptr)
 {
+  memalloc_stats_free++;
+
   if (ptr == NULL)
     return;
 
