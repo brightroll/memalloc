@@ -11,6 +11,9 @@ void * memalloc_default_arena = NULL;
 char * memalloc_default_type = "INIT";
 unsigned char memalloc_debug_mode = 0;
 
+void * memalloc_lo_mem;
+void * memalloc_hi_mem;
+
 static unsigned char memalloc_init_state = 0; // 0 = uninit, 1 = init
 static char memalloc_output_buff[1024];
 
@@ -63,6 +66,7 @@ static void do_init(void);
 #pragma pack(push, 1)
 struct memalloc_header
 {
+  char wilderness[16];
   char border;
   char type[8];
   char null1;
@@ -75,6 +79,7 @@ struct memalloc_header
 #define DBGLOG(format, ...) if (memalloc_debug_mode) do { snprintf(memalloc_output_buff, 1024, format "\n", __VA_ARGS__); write(2, memalloc_output_buff, strlen(memalloc_output_buff)); } while (0)
 
 
+#define ERRLOG(format, ...) do { snprintf(memalloc_output_buff, 1024, format "\n", __VA_ARGS__); write(2, memalloc_output_buff, strlen(memalloc_output_buff)); } while (0)
 
 /* memalloc_alloc
  *
@@ -87,16 +92,31 @@ memalloc_alloc(void * arena, char * type, char clear, size_t size)
   if (memalloc_init_state == 0)
     do_init();
 
+  DBGLOG("> memalloc_alloc %s %d %d", type, clear, size);
+
+  if (size == 0)
+  {
+    DBGLOG("< memalloc_alloc %08x", size);
+    return NULL;
+  }
+
+  __malloc_hook = old_malloc_hook;
   void * result = malloc(size + sizeof(struct memalloc_header));
+  old_malloc_hook = __malloc_hook;
+  __malloc_hook = __wrap_malloc;
 
   if (result == NULL)
-    return result;
+  {
+    DBGLOG("< memalloc_alloc *FAIL* %08x", 0);
+    return NULL;
+  }
 
   // malloc returns the pointer to the header, we return the result past the header
   void * p = result;
   result += sizeof(struct memalloc_header);
 
   struct memalloc_header * hdr = (struct memalloc_header *) p; 
+  memset(hdr->wilderness, 0, sizeof(hdr->wilderness));
   hdr->border = '|';
   strncpy(hdr->type, (type ? type : memalloc_default_type), sizeof(hdr->type));
   hdr->flags = 'A';
@@ -106,6 +126,12 @@ memalloc_alloc(void * arena, char * type, char clear, size_t size)
   if (clear)
     memset(result, 0, size);
 
+  if (!memalloc_lo_mem)
+    memalloc_lo_mem = result;
+  if (result > memalloc_hi_mem)
+    memalloc_hi_mem = result;
+
+  DBGLOG("< memalloc_alloc %08x", result);
   return result;
 }
 
@@ -123,14 +149,35 @@ memalloc_free(void * arena, char * type, void * ptr)
   struct memalloc_header * hdr = (struct memalloc_header *) p; 
   if (hdr->border != '|')
   {
-    DBGLOG("> memalloc_free %08x - bad/legacy free", ptr);
+    DBGLOG("> memalloc_free %08x - BAD/LEGACY FREE", ptr);
+    __free_hook = old_free_hook;
     free(ptr);
+    old_free_hook = __free_hook;
+    __free_hook = __wrap_free;
   }
   else
   {
     DBGLOG("> memalloc_free %08x - %s - %d", ptr, hdr->type, hdr->size);
+    if (hdr->flags == 'F')
+      ERRLOG("* memalloc_free DOUBLE %08x - %s - %d", ptr, hdr->type, hdr->size);
     hdr->flags = 'F';
+    __free_hook = old_free_hook;
     free(p);
+    old_free_hook = __free_hook;
+    __free_hook = __wrap_free;
+
+    //hdr->flags = 'F'; // taking a little risk, but free will blow up
+
+    // 2010/10/30 - Yep, sure as ****. My mutation messed up
+    // malloc's internal structure. Essentially, once you call
+    // free you are not to touch the memory. This puts into
+    // question this project. What can I safely leave in memory
+    // that will survive. My flag was a solid 12 bytes away!
+    // I don't want to implement my own allocators
+    // yet.
+    // The lack of a standard way of changing allocators easily is 
+    // a problem with C.
+    // LATER - giving myself another 16 byte margin seems to work
   }
 }
 
@@ -151,10 +198,9 @@ __wrap_malloc(size_t size, const void * caller)
   if (memalloc_init_state == 0)
     do_init();
   DBGLOG("> malloc %d", size);
-  __malloc_hook = old_malloc_hook;
+
   void * p = memalloc_alloc(NULL, memalloc_default_type, 0, size); 
-  old_malloc_hook = __malloc_hook;
-  __malloc_hook = __wrap_malloc;
+
   DBGLOG("< malloc %08x", p);
   return p;
 }
@@ -163,12 +209,10 @@ void
 __wrap_free(void *ptr, const void * caller)
 {
   DBGLOG("> free %08x", ptr);
-  __free_hook = old_free_hook;
   memalloc_free(NULL, memalloc_default_type, ptr); 
-  old_free_hook = __free_hook;
-  __free_hook = __wrap_free;
 }
 
+/*
 void * __wrap_calloc(size_t nmemb, size_t size)
 {
   if (memalloc_init_state == 0)
@@ -178,6 +222,7 @@ void * __wrap_calloc(size_t nmemb, size_t size)
   DBGLOG("< calloc %08x", p);
   return p;
 }
+*/
 
 void * __wrap_realloc(void *ptr, size_t size, const void * caller )
 {
@@ -193,32 +238,25 @@ void * __wrap_realloc(void *ptr, size_t size, const void * caller )
   // In this case, it is equivalent to free
   if (ptr && (size == 0))
   {
-    __free_hook = old_free_hook;
     memalloc_free(NULL, memalloc_default_type, ptr); 
-    __free_hook = __wrap_free;
     return NULL;
   }
 
 
   // The typical case (ptr && size)
-  __realloc_hook = old_realloc_hook;
-  __malloc_hook = old_malloc_hook;
   int actual = memalloc_size(NULL, memalloc_default_type, ptr);
-  DBGLOG("| realloc %d", actual);
-  __realloc_hook = __wrap_realloc;
-  __malloc_hook = __wrap_malloc;
+  DBGLOG("| realloc %d -> %d", actual, size);
   if (size <= actual)
+  {
+    DBGLOG("< realloc %08x - same", ptr);
     return ptr;
+  }
 
   __realloc_hook = old_realloc_hook;
-  __malloc_hook = old_malloc_hook;
-  __free_hook = old_free_hook;
   void * new = memalloc_alloc(NULL, memalloc_default_type, 0, size); 
   memcpy(new, ptr, actual);
   memalloc_free(NULL, memalloc_default_type, ptr); 
   __realloc_hook = __wrap_realloc;
-  __malloc_hook = __wrap_malloc;
-  __free_hook = __wrap_free;
 
   DBGLOG("< realloc %08x", new);
   return new;
