@@ -1,0 +1,15 @@
+
+OLD NOTES
+
+- attempt 1, simple attempt to use dlsym, infinite recursion
+- attempt 2, used ELF/GCC linker --wrap option, infinite recursion
+- attempt 3, used glibc malloc hooks, mostly working
+             used my trick to avoid LD_PRELOAD
+             discovered that I cannot use freed memory for book keeping,
+             overlapped with malloc's book keeping
+- attempt 4, working
+
+FUTURE
+- look at old dlea's allocator and use sbrk
+  http://g.oswego.edu/dl/html/malloc.html
+
