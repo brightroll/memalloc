@@ -8,7 +8,6 @@
 
 void * memalloc_default_arena = NULL;
 char * memalloc_default_type = "INIT";
-unsigned char memalloc_debug_mode = 0;
 
 void * memalloc_lo_mem;
 void * memalloc_hi_mem;
@@ -16,7 +15,16 @@ unsigned long long memalloc_stats_alloc = 0;
 unsigned long long memalloc_stats_free = 0;
 
 static unsigned char memalloc_init_state = 0; // 0 = uninit, 1 = init
+
+unsigned char memalloc_debug_mode = 0;
 static char memalloc_output_buff[1024];
+#define DBGLOG(format, ...) if (memalloc_debug_mode) do { snprintf(memalloc_output_buff, 1024, format "\n", __VA_ARGS__); write(2, memalloc_output_buff, strlen(memalloc_output_buff)); } while (0)
+
+#define ERRLOG(format, ...) do { snprintf(memalloc_output_buff, 1024, format "\n", __VA_ARGS__); write(2, memalloc_output_buff, strlen(memalloc_output_buff)); } while (0)
+
+/* function prototypes */
+static void do_init(void);
+
 
 /* Variables to save original hooks. */
        static void *(*old_malloc_hook)(size_t, const void *);
@@ -30,6 +38,12 @@ static char memalloc_output_buff[1024];
        static void
        my_init_hook(void)
        {
+           if (getenv("MEMALLOC_DEBUG_STDERR"))
+           {
+             memalloc_debug_mode = 1;
+             ERRLOG("| memalloc_init %d", 0);
+           }
+
            old_malloc_hook = __malloc_hook;
            old_free_hook = __free_hook;
            old_realloc_hook = __realloc_hook;
@@ -44,10 +58,11 @@ static char memalloc_output_buff[1024];
 
 void memalloc_init(void)
 {
-  __malloc_initialize_hook = my_init_hook;
+  // This should force glibc to call the __malloc_initialize_hook
+  // Otherwise, oddly enough, it doesn't get called on crt0 init
+  char * p = malloc(8);
+  free(p);
 }
-
-static void do_init(void);
 
 /* memalloc_header
  *
@@ -69,11 +84,6 @@ struct memalloc_header
   unsigned int size;
 };
 #pragma pack(pop)
-
-#define DBGLOG(format, ...) if (memalloc_debug_mode) do { snprintf(memalloc_output_buff, 1024, format "\n", __VA_ARGS__); write(2, memalloc_output_buff, strlen(memalloc_output_buff)); } while (0)
-
-
-#define ERRLOG(format, ...) do { snprintf(memalloc_output_buff, 1024, format "\n", __VA_ARGS__); write(2, memalloc_output_buff, strlen(memalloc_output_buff)); } while (0)
 
 /* memalloc_alloc
  *
