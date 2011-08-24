@@ -11,7 +11,7 @@ The overhead to allocation should be small. Because it hooks malloc,
 all allocations that occur with a library also use the library.
 At this time, we have only tested it on 32 bit builds.
 
-We developed and used this in production at Brightroll.com. 
+We developed and used this in production at Brightroll.com.
 
 ## license
 
