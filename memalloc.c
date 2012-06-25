@@ -96,11 +96,11 @@ memalloc_alloc(void * arena, char * type, char clear, size_t size)
 
   memalloc_stats_alloc++;
 
-  DBGLOG("> memalloc_alloc %s %d %d", type, clear, size);
+  DBGLOG("> memalloc_alloc %s %d %zu", type, clear, size);
 
   if (size == 0)
   {
-    DBGLOG("< memalloc_alloc 0x%08x", size);
+    DBGLOG("< memalloc_alloc %zu", size);
     return NULL;
   }
 
@@ -135,7 +135,7 @@ memalloc_alloc(void * arena, char * type, char clear, size_t size)
   if (result > memalloc_hi_mem)
     memalloc_hi_mem = result;
 
-  DBGLOG("< memalloc_alloc 0x%08x", (uint) result);
+  DBGLOG("< memalloc_alloc %p", result);
   return result;
 }
 
@@ -155,7 +155,7 @@ memalloc_free(void * arena, char * type, void * ptr)
   struct memalloc_header * hdr = (struct memalloc_header *) p; 
   if (hdr->border != '|')
   {
-    DBGLOG("> memalloc_free 0x%08x - BAD/LEGACY FREE", (uint) ptr);
+    DBGLOG("> memalloc_free %p - BAD/LEGACY FREE", ptr);
     __free_hook = old_free_hook;
     free(ptr);
     old_free_hook = __free_hook;
@@ -163,9 +163,9 @@ memalloc_free(void * arena, char * type, void * ptr)
   }
   else
   {
-    DBGLOG("> memalloc_free 0x%08x - %s - %d", (uint) ptr, hdr->type, hdr->size);
+    DBGLOG("> memalloc_free %p - %s - %d", ptr, hdr->type, hdr->size);
     if (hdr->flags == 'F')
-      ERRLOG("* memalloc_free DOUBLE 0x%08x - %s - %d", (uint) ptr, hdr->type, hdr->size);
+      ERRLOG("* memalloc_free DOUBLE %p - %s - %d", ptr, hdr->type, hdr->size);
     hdr->flags = 'F';
     __free_hook = old_free_hook;
     free(p);
@@ -203,24 +203,24 @@ __wrap_malloc(size_t size, const void * caller)
 {
   if (memalloc_init_state == 0)
     do_init();
-  DBGLOG("> malloc %d", size);
+  DBGLOG("> malloc %zu", size);
 
   void * p = memalloc_alloc(NULL, memalloc_default_type, 0, size); 
 
-  DBGLOG("< malloc 0x%08x", (uint) p);
+  DBGLOG("< malloc %p", p);
   return p;
 }
 
 void
 __wrap_free(void *ptr, const void * caller)
 {
-  DBGLOG("> free 0x%08x", (uint) ptr);
+  DBGLOG("> free %p", ptr);
   memalloc_free(NULL, memalloc_default_type, ptr); 
 }
 
 void * __wrap_realloc(void *ptr, size_t size, const void * caller )
 {
-  DBGLOG("> realloc 0x%08x %d", (uint) ptr, size);
+  DBGLOG("> realloc %p %zu", ptr, size);
   // Error case
   if ((ptr == NULL) && (size == 0))
     return NULL;
@@ -238,10 +238,10 @@ void * __wrap_realloc(void *ptr, size_t size, const void * caller )
 
   // The typical case (ptr && size)
   int actual = memalloc_size(NULL, memalloc_default_type, ptr);
-  DBGLOG("| realloc %d -> %d", actual, size);
+  DBGLOG("| realloc %d -> %zu", actual, size);
   if (size <= actual)
   {
-    DBGLOG("< realloc 0x%08x - same", (uint) ptr);
+    DBGLOG("< realloc %p - same", ptr);
     return ptr;
   }
 
@@ -251,7 +251,7 @@ void * __wrap_realloc(void *ptr, size_t size, const void * caller )
   memalloc_free(NULL, memalloc_default_type, ptr); 
   __realloc_hook = __wrap_realloc;
 
-  DBGLOG("< realloc 0x%08x", (uint) new_ptr);
+  DBGLOG("< realloc %p", new_ptr);
   return new_ptr;
 }
 
