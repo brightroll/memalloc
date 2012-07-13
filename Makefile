@@ -14,7 +14,7 @@ static: memalloc.o
 shared: libmemalloc.so
 
 lib%.so: %.c
-	$(CC) $(CFLAGS) -shared -o $@ $^
+	$(CC) $(CFLAGS) -fPIC -shared -o $@ $^
 
 clean:
 	-rm -f memalloc.o
