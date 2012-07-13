@@ -25,6 +25,10 @@ static char memalloc_output_buff[1024];
 /* function prototypes */
 static void do_init(void);
 
+/* Workaround for old glibc */
+#ifndef __MALLOC_HOOK_VOLATILE
+#define __MALLOC_HOOK_VOLATILE
+#endif
 
 /* Variables to save original hooks. */
        static void *(*old_malloc_hook)(size_t, const void *);
@@ -54,7 +58,7 @@ static void do_init(void);
        }
 
        /* Override initializing hook from the C library. */
-       void (*__malloc_initialize_hook) (void) = my_init_hook;
+       void (* __MALLOC_HOOK_VOLATILE __malloc_initialize_hook) (void) = my_init_hook;
 
 void memalloc_init(void)
 {
